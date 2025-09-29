@@ -2,9 +2,7 @@ extern crate mapproj;
 #[macro_use]
 extern crate quick_error;
 
-
 #[doc = include_str!("../readme.md")]
-
 pub mod error;
 
 use coo_system::CooSystem;
@@ -86,29 +84,45 @@ impl WCS {
     pub fn new(params: &WCSParams) -> Result<Self, Error> {
         let naxisi = match params.naxis {
             2 => {
-                let naxis1 = params.naxis1.ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS1"))?;
-                let naxis2 = params.naxis2.ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS2"))?;
+                let naxis1 = params
+                    .naxis1
+                    .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS1"))?;
+                let naxis2 = params
+                    .naxis2
+                    .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS2"))?;
 
                 Ok(vec![naxis1, naxis2].into_boxed_slice())
             }
             3 => {
-                let naxis1 = params.naxis1.ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS1"))?;
-                let naxis2 = params.naxis2.ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS2"))?;
-                let naxis3 = params.naxis3.ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS3"))?;
+                let naxis1 = params
+                    .naxis1
+                    .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS1"))?;
+                let naxis2 = params
+                    .naxis2
+                    .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS2"))?;
+                let naxis3 = params
+                    .naxis3
+                    .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS3"))?;
 
                 Ok(vec![naxis1, naxis2, naxis3].into_boxed_slice())
             }
             4 => {
-                let naxis1 = params.naxis1.ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS1"))?;
-                let naxis2 = params.naxis2.ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS2"))?;
-                let naxis3 = params.naxis3.ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS3"))?;
-                let naxis4 = params.naxis4.ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS4"))?;
+                let naxis1 = params
+                    .naxis1
+                    .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS1"))?;
+                let naxis2 = params
+                    .naxis2
+                    .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS2"))?;
+                let naxis3 = params
+                    .naxis3
+                    .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS3"))?;
+                let naxis4 = params
+                    .naxis4
+                    .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS4"))?;
 
                 Ok(vec![naxis1, naxis2, naxis3, naxis4].into_boxed_slice())
             }
-            _ => {
-                Err(Error::NotSupportedNaxis(params.naxis))
-            }
+            _ => Err(Error::NotSupportedNaxis(params.naxis)),
         }?;
 
         // At least NAXIS >= 2
@@ -526,8 +540,7 @@ impl WCSProj {
             WCSCelestialProj::HpxSip(wcs) => wcs.lonlat2img(lonlat),
         };
 
-        img_xy
-        //img_xy.map(|xy| ImgXY::new(xy.x() - 1.0, xy.y() - 1.0))
+        img_xy.map(|xy| ImgXY::new(xy.x() - 0.5, xy.y() - 0.5))
     }
 
     pub fn proj_xyz(&self, xyz: &(f64, f64, f64)) -> Option<ImgXY> {
@@ -594,12 +607,11 @@ impl WCSProj {
             WCSCelestialProj::HpxSip(wcs) => wcs.xyz2img(xyz),
         };
 
-        img_xy
-        //img_xy.map(|xy| ImgXY::new(xy.x() - 1.0, xy.y() - 1.0))
+        img_xy.map(|xy| ImgXY::new(xy.x() - 0.5, xy.y() - 0.5))
     }
 
     pub fn unproj_xyz(&self, img_pos: &ImgXY) -> Option<XYZ> {
-        //let img_pos = ImgXY::new(img_pos.x() + 1.0, img_pos.y() + 1.0);
+        let img_pos = ImgXY::new(img_pos.x() + 0.5, img_pos.y() + 0.5);
         let xyz = match &self.proj {
             // Zenithal
             WCSCelestialProj::Azp(wcs) => wcs.img2xyz(&img_pos),
@@ -671,7 +683,7 @@ impl WCSProj {
     ///
     /// * `img_pos`: the image space point expressed as a (X, Y) tuple given en pixels
     pub fn unproj_lonlat(&self, img_pos: &ImgXY) -> Option<LonLat> {
-        //let img_pos = ImgXY::new(img_pos.x() + 1.0, img_pos.y() + 1.0);
+        let img_pos = ImgXY::new(img_pos.x() + 0.5, img_pos.y() + 0.5);
         let lonlat = match &self.proj {
             // Zenithal
             WCSCelestialProj::Azp(wcs) => wcs.img2lonlat(&img_pos),
@@ -745,15 +757,15 @@ impl WCSProj {
 #[cfg(test)]
 mod tests {
     use super::WCS;
-    use crate::WCSParams;
     use crate::Error;
+    use crate::WCSParams;
 
     use crate::mapproj::Projection;
-    use fitsrs::fits::Fits;
     use fitsrs::card::CardValue;
+    use fitsrs::card::Value;
+    use fitsrs::fits::Fits;
     use fitsrs::hdu::header::{extension::image::Image, Header};
     use fitsrs::ImageData;
-    use fitsrs::card::Value;
 
     use glob::glob;
     use mapproj::{CanonicalProjection, ImgXY, LonLat};
@@ -763,18 +775,18 @@ mod tests {
 
     use std::convert::TryFrom;
     use std::str::FromStr;
-    
-    fn parse_optional_card_with_type<T: CardValue + FromStr>(header: &Header<Image>, key: &'static str) -> Result<Option<T>, Error> {
-        match  header.get_parsed::<T>(key).transpose() {
+
+    fn parse_optional_card_with_type<T: CardValue + FromStr>(
+        header: &Header<Image>,
+        key: &'static str,
+    ) -> Result<Option<T>, Error> {
+        match header.get_parsed::<T>(key).transpose() {
             Ok(v) => Ok(v),
             _ => {
-                let str = header.get_parsed::<String>(key).transpose()
-                    .unwrap_or(None);
-    
+                let str = header.get_parsed::<String>(key).transpose().unwrap_or(None);
+
                 Ok(if let Some(ss) = str {
-                    ss.trim().parse::<T>()
-                        .map(|v| Some(v))
-                        .unwrap_or(None)
+                    ss.trim().parse::<T>().map(|v| Some(v)).unwrap_or(None)
                 } else {
                     // card not found but it is ok as it is not mandatory
                     None
@@ -782,25 +794,24 @@ mod tests {
             }
         }
     }
-    
-    fn parse_mandatory_card_with_type<T: CardValue>(header: &Header<Image>, key: &'static str) -> Result<T, &'static str> {
+
+    fn parse_mandatory_card_with_type<T: CardValue>(
+        header: &Header<Image>,
+        key: &'static str,
+    ) -> Result<T, &'static str> {
         match header.get_parsed::<T>(key) {
             // No parsing error and found
-            Some(Ok(v)) => {
-                Ok(v)
-            },
+            Some(Ok(v)) => Ok(v),
             // No error but not found, we return an error
             None => Err("Mandatory keyword not found"),
             // Return the parsing error
-            Some(Err(_)) => {
-                Err("Error parsing mandatory keyword")
-            }
+            Some(Err(_)) => Err("Error parsing mandatory keyword"),
         }
     }
-    
+
     impl<'a> TryFrom<&'a Header<Image>> for WCS {
         type Error = Error;
-    
+
         fn try_from(h: &'a Header<Image>) -> Result<Self, Self::Error> {
             let params = WCSParams {
                 naxis: parse_mandatory_card_with_type::<i64>(h, "NAXIS").unwrap(),
@@ -990,11 +1001,11 @@ mod tests {
                 bp_1_5: parse_optional_card_with_type::<f64>(h, "BP_1_5")?,
                 bp_0_6: parse_optional_card_with_type::<f64>(h, "BP_0_6")?,
             };
-    
+
             WCS::new(&params)
         }
     }
-    
+
     fn wcs_from_fits_header(header: &Header<Image>) -> Result<WCS, Error> {
         header.try_into()
     }
@@ -1045,7 +1056,7 @@ mod tests {
 
                 reproject_fits_image(mapproj::hybrid::hpx::Hpx::new(), &wcs, &header, &data);
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -1152,32 +1163,32 @@ mod tests {
                 HDU::XImage(hdu) | HDU::Primary(hdu) => {
                     let header = hdu.get_header();
                     let wcs = wcs_from_fits_header(header).unwrap();
-        
+
                     // add the astropy opened results
                     let path_astropy = path.with_extension("fits.csv");
                     let f = File::open(path_astropy).unwrap();
-        
+
                     let mut rdr = csv::Reader::from_reader(BufReader::new(f));
                     for result in rdr.records() {
                         let record = result.unwrap();
-        
+
                         let ra: f64 = record[0].parse().unwrap();
                         let dec: f64 = record[1].parse().unwrap();
                         let x: f64 = record[2].parse().unwrap();
                         let y: f64 = record[3].parse().unwrap();
-        
+
                         if ra.is_finite() && dec.is_finite() {
                             if let Some(img_xy) = wcs.proj(&LonLat::new(ra, dec)) {
                                 //dbg!(img_xy.x() - x);
                                 //dbg!(img_xy.y() - y);
-        
+
                                 assert_delta!(img_xy.x(), x, 1e-4);
                                 assert_delta!(img_xy.y(), y, 1e-4);
                             }
                         }
                     }
                 }
-                _ => unreachable!()
+                _ => unreachable!(),
             };
         }
     }
@@ -1202,24 +1213,26 @@ mod tests {
                             .get_parsed::<f64>("CRVAL2")
                             .unwrap_or(Ok(0.0))
                             .unwrap();
-                        let crpix1 = if let Some(Value::Integer { value, .. }) = header.get("CRPIX1") {
-                            *value as f64
-                        } else if let Some(Value::Float { value, .. }) = header.get("CRPIX1") {
-                            *value
-                        } else {
-                            0.0
-                        };
-                        
-                        let crpix2 = if let Some(Value::Integer { value, .. }) = header.get("CRPIX2") {
-                            *value as f64
-                        } else if let Some(Value::Float { value, .. }) = header.get("CRPIX2") {
-                            *value
-                        } else {
-                            0.0
-                        };
-        
+                        let crpix1 =
+                            if let Some(Value::Integer { value, .. }) = header.get("CRPIX1") {
+                                *value as f64
+                            } else if let Some(Value::Float { value, .. }) = header.get("CRPIX1") {
+                                *value
+                            } else {
+                                0.0
+                            };
+
+                        let crpix2 =
+                            if let Some(Value::Integer { value, .. }) = header.get("CRPIX2") {
+                                *value as f64
+                            } else if let Some(Value::Float { value, .. }) = header.get("CRPIX2") {
+                                *value
+                            } else {
+                                0.0
+                            };
+
                         let wcs = wcs_from_fits_header(&header).unwrap();
-        
+
                         // crval to crpix
                         let proj_px = wcs
                             .proj(&LonLat::new(
@@ -1229,15 +1242,15 @@ mod tests {
                             .unwrap();
                         assert_delta!(proj_px.x(), crpix1, 1e-6);
                         assert_delta!(proj_px.y(), crpix2, 1e-6);
-        
+
                         // crpix to crval
                         let lonlat = wcs
                             .unproj_lonlat(&ImgXY::new(dbg!(crpix1), dbg!(crpix2)))
                             .unwrap();
                         assert_delta!(lonlat.lon(), crval1.to_radians(), 1e-6);
                         assert_delta!(lonlat.lat(), crval2.to_radians(), 1e-6);
-                    },
-                    _ => unreachable!()
+                    }
+                    _ => unreachable!(),
                 };
             }
         }
@@ -1256,8 +1269,8 @@ mod tests {
                 let header = hdu.get_header();
                 let wcs = wcs_from_fits_header(header).unwrap();
                 dbg!(wcs.unproj(&ImgXY::new(0.0, 1200.0)));
-            },
-            _ => unreachable!()
+            }
+            _ => unreachable!(),
         }
     }
 }
