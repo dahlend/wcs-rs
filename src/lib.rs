@@ -479,7 +479,7 @@ impl WCSProj {
     pub fn proj_lonlat(&self, lonlat: &LonLat) -> Option<ImgXY> {
         let lonlat = &self.coo_system.from_icrs(lonlat.clone());
 
-        let img_xy = match &self.proj {
+        match &self.proj {
             // Zenithal
             WCSCelestialProj::Azp(wcs) => wcs.lonlat2img(lonlat),
             WCSCelestialProj::Szp(wcs) => wcs.lonlat2img(lonlat),
@@ -538,15 +538,13 @@ impl WCSProj {
             WCSCelestialProj::CooSip(wcs) => wcs.lonlat2img(lonlat),
             // Hybrid
             WCSCelestialProj::HpxSip(wcs) => wcs.lonlat2img(lonlat),
-        };
-
-        img_xy.map(|xy| ImgXY::new(xy.x() - 0.5, xy.y() - 0.5))
+        }
     }
 
     pub fn proj_xyz(&self, xyz: &(f64, f64, f64)) -> Option<ImgXY> {
         let xyz = &self.coo_system.from_icrs_xyz(XYZ::new(xyz.0, xyz.1, xyz.2));
 
-        let img_xy = match &self.proj {
+        match &self.proj {
             // Zenithal
             WCSCelestialProj::Azp(wcs) => wcs.xyz2img(xyz),
             WCSCelestialProj::Szp(wcs) => wcs.xyz2img(xyz),
@@ -605,13 +603,10 @@ impl WCSProj {
             WCSCelestialProj::CooSip(wcs) => wcs.xyz2img(xyz),
             // Hybrid
             WCSCelestialProj::HpxSip(wcs) => wcs.xyz2img(xyz),
-        };
-
-        img_xy.map(|xy| ImgXY::new(xy.x() - 0.5, xy.y() - 0.5))
+        }
     }
 
     pub fn unproj_xyz(&self, img_pos: &ImgXY) -> Option<XYZ> {
-        let img_pos = ImgXY::new(img_pos.x() + 0.5, img_pos.y() + 0.5);
         let xyz = match &self.proj {
             // Zenithal
             WCSCelestialProj::Azp(wcs) => wcs.img2xyz(&img_pos),
@@ -683,7 +678,6 @@ impl WCSProj {
     ///
     /// * `img_pos`: the image space point expressed as a (X, Y) tuple given en pixels
     pub fn unproj_lonlat(&self, img_pos: &ImgXY) -> Option<LonLat> {
-        let img_pos = ImgXY::new(img_pos.x() + 0.5, img_pos.y() + 0.5);
         let lonlat = match &self.proj {
             // Zenithal
             WCSCelestialProj::Azp(wcs) => wcs.img2lonlat(&img_pos),
@@ -761,52 +755,36 @@ mod tests {
     use crate::WCSParams;
 
     use crate::mapproj::Projection;
-    use fitsrs::card::CardValue;
+
     use fitsrs::card::Value;
     use fitsrs::fits::Fits;
     use fitsrs::hdu::header::{extension::image::Image, Header};
-    use fitsrs::ImageData;
+    use fitsrs::Pixels;
 
     use glob::glob;
     use mapproj::{CanonicalProjection, ImgXY, LonLat};
+    use serde::Deserialize;
     use std::f64::consts::PI;
     use std::fs::File;
     use std::io::BufReader;
 
     use std::convert::TryFrom;
-    use std::str::FromStr;
 
-    fn parse_optional_card_with_type<T: CardValue + FromStr>(
-        header: &Header<Image>,
+    use crate::Error::MandatoryWCSKeywordsMissing;
+    fn parse_card<'de, T: Deserialize<'de>>(
+        header: &'de Header<Image>,
         key: &'static str,
-    ) -> Result<Option<T>, Error> {
-        match header.get_parsed::<T>(key).transpose() {
-            Ok(v) => Ok(v),
-            _ => {
-                let str = header.get_parsed::<String>(key).transpose().unwrap_or(None);
-
-                Ok(if let Some(ss) = str {
-                    ss.trim().parse::<T>().map(|v| Some(v)).unwrap_or(None)
-                } else {
-                    // card not found but it is ok as it is not mandatory
-                    None
-                })
-            }
-        }
+    ) -> Result<T, Error> {
+        header
+            .get_parsed::<T>(key)
+            .map_err(|_| MandatoryWCSKeywordsMissing("Card cannot be parsed"))
     }
 
-    fn parse_mandatory_card_with_type<T: CardValue>(
-        header: &Header<Image>,
+    fn parse_opt_card<'de, T: Deserialize<'de>>(
+        header: &'de Header<Image>,
         key: &'static str,
-    ) -> Result<T, &'static str> {
-        match header.get_parsed::<T>(key) {
-            // No parsing error and found
-            Some(Ok(v)) => Ok(v),
-            // No error but not found, we return an error
-            None => Err("Mandatory keyword not found"),
-            // Return the parsing error
-            Some(Err(_)) => Err("Error parsing mandatory keyword"),
-        }
+    ) -> Option<T> {
+        header.get_parsed::<T>(key).ok()
     }
 
     impl<'a> TryFrom<&'a Header<Image>> for WCS {
@@ -814,192 +792,192 @@ mod tests {
 
         fn try_from(h: &'a Header<Image>) -> Result<Self, Self::Error> {
             let params = WCSParams {
-                naxis: parse_mandatory_card_with_type::<i64>(h, "NAXIS").unwrap(),
-                ctype1: parse_mandatory_card_with_type::<String>(h, "CTYPE1").unwrap(),
+                naxis: parse_card::<i64>(h, "NAXIS").unwrap(),
+                ctype1: parse_card::<String>(h, "CTYPE1").unwrap(),
 
-                naxis1: parse_optional_card_with_type::<i64>(h, "NAXIS1")?,
-                naxis2: parse_optional_card_with_type::<i64>(h, "NAXIS2")?,
+                naxis1: parse_opt_card::<i64>(h, "NAXIS1"),
+                naxis2: parse_opt_card::<i64>(h, "NAXIS2"),
 
-                ctype2: parse_optional_card_with_type::<String>(h, "CTYPE2")?,
-                ctype3: parse_optional_card_with_type::<String>(h, "CTYPE3")?,
+                ctype2: parse_opt_card::<String>(h, "CTYPE2"),
+                ctype3: parse_opt_card::<String>(h, "CTYPE3"),
 
-                a_order: parse_optional_card_with_type::<i64>(h, "A_ORDER")?,
-                b_order: parse_optional_card_with_type::<i64>(h, "B_ORDER")?,
-                ap_order: parse_optional_card_with_type::<i64>(h, "AP_ORDER")?,
-                bp_order: parse_optional_card_with_type::<i64>(h, "BP_ORDER")?,
-                crpix1: parse_optional_card_with_type::<f64>(h, "CRPIX1")?,
-                crpix2: parse_optional_card_with_type::<f64>(h, "CRPIX2")?,
-                crpix3: parse_optional_card_with_type::<f64>(h, "CRPIX3")?,
-                crval1: parse_optional_card_with_type::<f64>(h, "CRVAL1")?,
-                crval2: parse_optional_card_with_type::<f64>(h, "CRVAL2")?,
-                crval3: parse_optional_card_with_type::<f64>(h, "CRVAL3")?,
-                crota1: parse_optional_card_with_type::<f64>(h, "CROTA1")?,
-                crota2: parse_optional_card_with_type::<f64>(h, "CROTA2")?,
-                crota3: parse_optional_card_with_type::<f64>(h, "CROTA3")?,
-                cdelt1: parse_optional_card_with_type::<f64>(h, "CDELT1")?,
-                cdelt2: parse_optional_card_with_type::<f64>(h, "CDELT2")?,
-                cdelt3: parse_optional_card_with_type::<f64>(h, "CDELT3")?,
-                naxis3: parse_optional_card_with_type::<i64>(h, "NAXIS3")?,
-                naxis4: parse_optional_card_with_type::<i64>(h, "NAXIS4")?,
-                lonpole: parse_optional_card_with_type::<f64>(h, "LONPOLE")?,
-                latpole: parse_optional_card_with_type::<f64>(h, "LATPOLE")?,
-                equinox: parse_optional_card_with_type::<f64>(h, "EQUINOX")?,
-                epoch: parse_optional_card_with_type::<f64>(h, "EPOCH")?,
-                radesys: parse_optional_card_with_type::<String>(h, "RADESYS")?,
-                pv1_0: parse_optional_card_with_type::<f64>(h, "PV1_0")?,
-                pv1_1: parse_optional_card_with_type::<f64>(h, "PV1_1")?,
-                pv1_2: parse_optional_card_with_type::<f64>(h, "PV1_2")?,
-                pv2_0: parse_optional_card_with_type::<f64>(h, "PV2_0")?,
-                pv2_1: parse_optional_card_with_type::<f64>(h, "PV2_1")?,
-                pv2_2: parse_optional_card_with_type::<f64>(h, "PV2_2")?,
-                pv2_3: parse_optional_card_with_type::<f64>(h, "PV2_3")?,
-                pv2_4: parse_optional_card_with_type::<f64>(h, "PV2_4")?,
-                pv2_5: parse_optional_card_with_type::<f64>(h, "PV2_5")?,
-                pv2_6: parse_optional_card_with_type::<f64>(h, "PV2_6")?,
-                pv2_7: parse_optional_card_with_type::<f64>(h, "PV2_7")?,
-                pv2_8: parse_optional_card_with_type::<f64>(h, "PV2_8")?,
-                pv2_9: parse_optional_card_with_type::<f64>(h, "PV2_9")?,
-                pv2_10: parse_optional_card_with_type::<f64>(h, "PV2_10")?,
-                pv2_11: parse_optional_card_with_type::<f64>(h, "PV2_11")?,
-                pv2_12: parse_optional_card_with_type::<f64>(h, "PV2_12")?,
-                pv2_13: parse_optional_card_with_type::<f64>(h, "PV2_13")?,
-                pv2_14: parse_optional_card_with_type::<f64>(h, "PV2_14")?,
-                pv2_15: parse_optional_card_with_type::<f64>(h, "PV2_15")?,
-                pv2_16: parse_optional_card_with_type::<f64>(h, "PV2_16")?,
-                pv2_17: parse_optional_card_with_type::<f64>(h, "PV2_17")?,
-                pv2_18: parse_optional_card_with_type::<f64>(h, "PV2_18")?,
-                pv2_19: parse_optional_card_with_type::<f64>(h, "PV2_19")?,
-                pv2_20: parse_optional_card_with_type::<f64>(h, "PV2_20")?,
-                cd1_1: parse_optional_card_with_type::<f64>(h, "CD1_1")?,
-                cd1_2: parse_optional_card_with_type::<f64>(h, "CD1_2")?,
-                cd1_3: parse_optional_card_with_type::<f64>(h, "CD1_3")?,
-                cd2_1: parse_optional_card_with_type::<f64>(h, "CD2_1")?,
-                cd2_2: parse_optional_card_with_type::<f64>(h, "CD2_2")?,
-                cd2_3: parse_optional_card_with_type::<f64>(h, "CD2_3")?,
-                cd3_1: parse_optional_card_with_type::<f64>(h, "CD3_1")?,
-                cd3_2: parse_optional_card_with_type::<f64>(h, "CD3_2")?,
-                cd3_3: parse_optional_card_with_type::<f64>(h, "CD3_3")?,
-                pc1_1: parse_optional_card_with_type::<f64>(h, "PC1_1")?,
-                pc1_2: parse_optional_card_with_type::<f64>(h, "PC1_2")?,
-                pc1_3: parse_optional_card_with_type::<f64>(h, "PC1_3")?,
-                pc2_1: parse_optional_card_with_type::<f64>(h, "PC2_1")?,
-                pc2_2: parse_optional_card_with_type::<f64>(h, "PC2_2")?,
-                pc2_3: parse_optional_card_with_type::<f64>(h, "PC2_3")?,
-                pc3_1: parse_optional_card_with_type::<f64>(h, "PC3_1")?,
-                pc3_2: parse_optional_card_with_type::<f64>(h, "PC3_2")?,
-                pc3_3: parse_optional_card_with_type::<f64>(h, "PC3_3")?,
-                a_0_0: parse_optional_card_with_type::<f64>(h, "A_0_0")?,
-                a_1_0: parse_optional_card_with_type::<f64>(h, "A_1_0")?,
-                a_2_0: parse_optional_card_with_type::<f64>(h, "A_2_0")?,
-                a_3_0: parse_optional_card_with_type::<f64>(h, "A_3_0")?,
-                a_4_0: parse_optional_card_with_type::<f64>(h, "A_4_0")?,
-                a_5_0: parse_optional_card_with_type::<f64>(h, "A_5_0")?,
-                a_6_0: parse_optional_card_with_type::<f64>(h, "A_6_0")?,
-                a_0_1: parse_optional_card_with_type::<f64>(h, "A_0_1")?,
-                a_1_1: parse_optional_card_with_type::<f64>(h, "A_1_1")?,
-                a_2_1: parse_optional_card_with_type::<f64>(h, "A_2_1")?,
-                a_3_1: parse_optional_card_with_type::<f64>(h, "A_3_1")?,
-                a_4_1: parse_optional_card_with_type::<f64>(h, "A_4_1")?,
-                a_5_1: parse_optional_card_with_type::<f64>(h, "A_5_1")?,
-                a_0_2: parse_optional_card_with_type::<f64>(h, "A_0_2")?,
-                a_1_2: parse_optional_card_with_type::<f64>(h, "A_1_2")?,
-                a_2_2: parse_optional_card_with_type::<f64>(h, "A_2_2")?,
-                a_3_2: parse_optional_card_with_type::<f64>(h, "A_3_2")?,
-                a_4_2: parse_optional_card_with_type::<f64>(h, "A_4_2")?,
-                a_0_3: parse_optional_card_with_type::<f64>(h, "A_0_3")?,
-                a_1_3: parse_optional_card_with_type::<f64>(h, "A_1_3")?,
-                a_2_3: parse_optional_card_with_type::<f64>(h, "A_2_3")?,
-                a_3_3: parse_optional_card_with_type::<f64>(h, "A_3_3")?,
-                a_0_4: parse_optional_card_with_type::<f64>(h, "A_0_4")?,
-                a_1_4: parse_optional_card_with_type::<f64>(h, "A_1_4")?,
-                a_2_4: parse_optional_card_with_type::<f64>(h, "A_2_4")?,
-                a_0_5: parse_optional_card_with_type::<f64>(h, "A_0_5")?,
-                a_1_5: parse_optional_card_with_type::<f64>(h, "A_1_5")?,
-                a_0_6: parse_optional_card_with_type::<f64>(h, "A_0_6")?,
-                ap_0_0: parse_optional_card_with_type::<f64>(h, "AP_0_0")?,
-                ap_1_0: parse_optional_card_with_type::<f64>(h, "AP_1_0")?,
-                ap_2_0: parse_optional_card_with_type::<f64>(h, "AP_2_0")?,
-                ap_3_0: parse_optional_card_with_type::<f64>(h, "AP_3_0")?,
-                ap_4_0: parse_optional_card_with_type::<f64>(h, "AP_4_0")?,
-                ap_5_0: parse_optional_card_with_type::<f64>(h, "AP_5_0")?,
-                ap_6_0: parse_optional_card_with_type::<f64>(h, "AP_6_0")?,
-                ap_0_1: parse_optional_card_with_type::<f64>(h, "AP_0_1")?,
-                ap_1_1: parse_optional_card_with_type::<f64>(h, "AP_1_1")?,
-                ap_2_1: parse_optional_card_with_type::<f64>(h, "AP_2_1")?,
-                ap_3_1: parse_optional_card_with_type::<f64>(h, "AP_3_1")?,
-                ap_4_1: parse_optional_card_with_type::<f64>(h, "AP_4_1")?,
-                ap_5_1: parse_optional_card_with_type::<f64>(h, "AP_5_1")?,
-                ap_0_2: parse_optional_card_with_type::<f64>(h, "AP_0_2")?,
-                ap_1_2: parse_optional_card_with_type::<f64>(h, "AP_1_2")?,
-                ap_2_2: parse_optional_card_with_type::<f64>(h, "AP_2_2")?,
-                ap_3_2: parse_optional_card_with_type::<f64>(h, "AP_3_2")?,
-                ap_4_2: parse_optional_card_with_type::<f64>(h, "AP_4_2")?,
-                ap_0_3: parse_optional_card_with_type::<f64>(h, "AP_0_3")?,
-                ap_1_3: parse_optional_card_with_type::<f64>(h, "AP_1_3")?,
-                ap_2_3: parse_optional_card_with_type::<f64>(h, "AP_2_3")?,
-                ap_3_3: parse_optional_card_with_type::<f64>(h, "AP_3_3")?,
-                ap_0_4: parse_optional_card_with_type::<f64>(h, "AP_0_4")?,
-                ap_1_4: parse_optional_card_with_type::<f64>(h, "AP_1_4")?,
-                ap_2_4: parse_optional_card_with_type::<f64>(h, "AP_2_4")?,
-                ap_0_5: parse_optional_card_with_type::<f64>(h, "AP_0_5")?,
-                ap_1_5: parse_optional_card_with_type::<f64>(h, "AP_1_5")?,
-                ap_0_6: parse_optional_card_with_type::<f64>(h, "AP_0_6")?,
-                b_0_0: parse_optional_card_with_type::<f64>(h, "B_0_0")?,
-                b_1_0: parse_optional_card_with_type::<f64>(h, "B_1_0")?,
-                b_2_0: parse_optional_card_with_type::<f64>(h, "B_2_0")?,
-                b_3_0: parse_optional_card_with_type::<f64>(h, "B_3_0")?,
-                b_4_0: parse_optional_card_with_type::<f64>(h, "B_4_0")?,
-                b_5_0: parse_optional_card_with_type::<f64>(h, "B_5_0")?,
-                b_6_0: parse_optional_card_with_type::<f64>(h, "B_6_0")?,
-                b_0_1: parse_optional_card_with_type::<f64>(h, "B_0_1")?,
-                b_1_1: parse_optional_card_with_type::<f64>(h, "B_1_1")?,
-                b_2_1: parse_optional_card_with_type::<f64>(h, "B_2_1")?,
-                b_3_1: parse_optional_card_with_type::<f64>(h, "B_3_1")?,
-                b_4_1: parse_optional_card_with_type::<f64>(h, "B_4_1")?,
-                b_5_1: parse_optional_card_with_type::<f64>(h, "B_5_1")?,
-                b_0_2: parse_optional_card_with_type::<f64>(h, "B_0_2")?,
-                b_1_2: parse_optional_card_with_type::<f64>(h, "B_1_2")?,
-                b_2_2: parse_optional_card_with_type::<f64>(h, "B_2_2")?,
-                b_3_2: parse_optional_card_with_type::<f64>(h, "B_3_2")?,
-                b_4_2: parse_optional_card_with_type::<f64>(h, "B_4_2")?,
-                b_0_3: parse_optional_card_with_type::<f64>(h, "B_0_3")?,
-                b_1_3: parse_optional_card_with_type::<f64>(h, "B_1_3")?,
-                b_2_3: parse_optional_card_with_type::<f64>(h, "B_2_3")?,
-                b_3_3: parse_optional_card_with_type::<f64>(h, "B_3_3")?,
-                b_0_4: parse_optional_card_with_type::<f64>(h, "B_0_4")?,
-                b_1_4: parse_optional_card_with_type::<f64>(h, "B_1_4")?,
-                b_2_4: parse_optional_card_with_type::<f64>(h, "B_2_4")?,
-                b_0_5: parse_optional_card_with_type::<f64>(h, "B_0_5")?,
-                b_1_5: parse_optional_card_with_type::<f64>(h, "B_1_5")?,
-                b_0_6: parse_optional_card_with_type::<f64>(h, "B_0_6")?,
-                bp_0_0: parse_optional_card_with_type::<f64>(h, "BP_0_0")?,
-                bp_1_0: parse_optional_card_with_type::<f64>(h, "BP_1_0")?,
-                bp_2_0: parse_optional_card_with_type::<f64>(h, "BP_2_0")?,
-                bp_3_0: parse_optional_card_with_type::<f64>(h, "BP_3_0")?,
-                bp_4_0: parse_optional_card_with_type::<f64>(h, "BP_4_0")?,
-                bp_5_0: parse_optional_card_with_type::<f64>(h, "BP_5_0")?,
-                bp_6_0: parse_optional_card_with_type::<f64>(h, "BP_6_0")?,
-                bp_0_1: parse_optional_card_with_type::<f64>(h, "BP_0_1")?,
-                bp_1_1: parse_optional_card_with_type::<f64>(h, "BP_1_1")?,
-                bp_2_1: parse_optional_card_with_type::<f64>(h, "BP_2_1")?,
-                bp_3_1: parse_optional_card_with_type::<f64>(h, "BP_3_1")?,
-                bp_4_1: parse_optional_card_with_type::<f64>(h, "BP_4_1")?,
-                bp_5_1: parse_optional_card_with_type::<f64>(h, "BP_5_1")?,
-                bp_0_2: parse_optional_card_with_type::<f64>(h, "BP_0_2")?,
-                bp_1_2: parse_optional_card_with_type::<f64>(h, "BP_1_2")?,
-                bp_2_2: parse_optional_card_with_type::<f64>(h, "BP_2_2")?,
-                bp_3_2: parse_optional_card_with_type::<f64>(h, "BP_3_2")?,
-                bp_4_2: parse_optional_card_with_type::<f64>(h, "BP_4_2")?,
-                bp_0_3: parse_optional_card_with_type::<f64>(h, "BP_0_3")?,
-                bp_1_3: parse_optional_card_with_type::<f64>(h, "BP_1_3")?,
-                bp_2_3: parse_optional_card_with_type::<f64>(h, "BP_2_3")?,
-                bp_3_3: parse_optional_card_with_type::<f64>(h, "BP_3_3")?,
-                bp_0_4: parse_optional_card_with_type::<f64>(h, "BP_0_4")?,
-                bp_1_4: parse_optional_card_with_type::<f64>(h, "BP_1_4")?,
-                bp_2_4: parse_optional_card_with_type::<f64>(h, "BP_2_4")?,
-                bp_0_5: parse_optional_card_with_type::<f64>(h, "BP_0_5")?,
-                bp_1_5: parse_optional_card_with_type::<f64>(h, "BP_1_5")?,
-                bp_0_6: parse_optional_card_with_type::<f64>(h, "BP_0_6")?,
+                a_order: parse_opt_card::<i64>(h, "A_ORDER"),
+                b_order: parse_opt_card::<i64>(h, "B_ORDER"),
+                ap_order: parse_opt_card::<i64>(h, "AP_ORDER"),
+                bp_order: parse_opt_card::<i64>(h, "BP_ORDER"),
+                crpix1: parse_opt_card::<f64>(h, "CRPIX1"),
+                crpix2: parse_opt_card::<f64>(h, "CRPIX2"),
+                crpix3: parse_opt_card::<f64>(h, "CRPIX3"),
+                crval1: parse_opt_card::<f64>(h, "CRVAL1"),
+                crval2: parse_opt_card::<f64>(h, "CRVAL2"),
+                crval3: parse_opt_card::<f64>(h, "CRVAL3"),
+                crota1: parse_opt_card::<f64>(h, "CROTA1"),
+                crota2: parse_opt_card::<f64>(h, "CROTA2"),
+                crota3: parse_opt_card::<f64>(h, "CROTA3"),
+                cdelt1: parse_opt_card::<f64>(h, "CDELT1"),
+                cdelt2: parse_opt_card::<f64>(h, "CDELT2"),
+                cdelt3: parse_opt_card::<f64>(h, "CDELT3"),
+                naxis3: parse_opt_card::<i64>(h, "NAXIS3"),
+                naxis4: parse_opt_card::<i64>(h, "NAXIS4"),
+                lonpole: parse_opt_card::<f64>(h, "LONPOLE"),
+                latpole: parse_opt_card::<f64>(h, "LATPOLE"),
+                equinox: parse_opt_card::<f64>(h, "EQUINOX"),
+                epoch: parse_opt_card::<f64>(h, "EPOCH"),
+                radesys: parse_opt_card::<String>(h, "RADESYS"),
+                pv1_0: parse_opt_card::<f64>(h, "PV1_0"),
+                pv1_1: parse_opt_card::<f64>(h, "PV1_1"),
+                pv1_2: parse_opt_card::<f64>(h, "PV1_2"),
+                pv2_0: parse_opt_card::<f64>(h, "PV2_0"),
+                pv2_1: parse_opt_card::<f64>(h, "PV2_1"),
+                pv2_2: parse_opt_card::<f64>(h, "PV2_2"),
+                pv2_3: parse_opt_card::<f64>(h, "PV2_3"),
+                pv2_4: parse_opt_card::<f64>(h, "PV2_4"),
+                pv2_5: parse_opt_card::<f64>(h, "PV2_5"),
+                pv2_6: parse_opt_card::<f64>(h, "PV2_6"),
+                pv2_7: parse_opt_card::<f64>(h, "PV2_7"),
+                pv2_8: parse_opt_card::<f64>(h, "PV2_8"),
+                pv2_9: parse_opt_card::<f64>(h, "PV2_9"),
+                pv2_10: parse_opt_card::<f64>(h, "PV2_10"),
+                pv2_11: parse_opt_card::<f64>(h, "PV2_11"),
+                pv2_12: parse_opt_card::<f64>(h, "PV2_12"),
+                pv2_13: parse_opt_card::<f64>(h, "PV2_13"),
+                pv2_14: parse_opt_card::<f64>(h, "PV2_14"),
+                pv2_15: parse_opt_card::<f64>(h, "PV2_15"),
+                pv2_16: parse_opt_card::<f64>(h, "PV2_16"),
+                pv2_17: parse_opt_card::<f64>(h, "PV2_17"),
+                pv2_18: parse_opt_card::<f64>(h, "PV2_18"),
+                pv2_19: parse_opt_card::<f64>(h, "PV2_19"),
+                pv2_20: parse_opt_card::<f64>(h, "PV2_20"),
+                cd1_1: parse_opt_card::<f64>(h, "CD1_1"),
+                cd1_2: parse_opt_card::<f64>(h, "CD1_2"),
+                cd1_3: parse_opt_card::<f64>(h, "CD1_3"),
+                cd2_1: parse_opt_card::<f64>(h, "CD2_1"),
+                cd2_2: parse_opt_card::<f64>(h, "CD2_2"),
+                cd2_3: parse_opt_card::<f64>(h, "CD2_3"),
+                cd3_1: parse_opt_card::<f64>(h, "CD3_1"),
+                cd3_2: parse_opt_card::<f64>(h, "CD3_2"),
+                cd3_3: parse_opt_card::<f64>(h, "CD3_3"),
+                pc1_1: parse_opt_card::<f64>(h, "PC1_1"),
+                pc1_2: parse_opt_card::<f64>(h, "PC1_2"),
+                pc1_3: parse_opt_card::<f64>(h, "PC1_3"),
+                pc2_1: parse_opt_card::<f64>(h, "PC2_1"),
+                pc2_2: parse_opt_card::<f64>(h, "PC2_2"),
+                pc2_3: parse_opt_card::<f64>(h, "PC2_3"),
+                pc3_1: parse_opt_card::<f64>(h, "PC3_1"),
+                pc3_2: parse_opt_card::<f64>(h, "PC3_2"),
+                pc3_3: parse_opt_card::<f64>(h, "PC3_3"),
+                a_0_0: parse_opt_card::<f64>(h, "A_0_0"),
+                a_1_0: parse_opt_card::<f64>(h, "A_1_0"),
+                a_2_0: parse_opt_card::<f64>(h, "A_2_0"),
+                a_3_0: parse_opt_card::<f64>(h, "A_3_0"),
+                a_4_0: parse_opt_card::<f64>(h, "A_4_0"),
+                a_5_0: parse_opt_card::<f64>(h, "A_5_0"),
+                a_6_0: parse_opt_card::<f64>(h, "A_6_0"),
+                a_0_1: parse_opt_card::<f64>(h, "A_0_1"),
+                a_1_1: parse_opt_card::<f64>(h, "A_1_1"),
+                a_2_1: parse_opt_card::<f64>(h, "A_2_1"),
+                a_3_1: parse_opt_card::<f64>(h, "A_3_1"),
+                a_4_1: parse_opt_card::<f64>(h, "A_4_1"),
+                a_5_1: parse_opt_card::<f64>(h, "A_5_1"),
+                a_0_2: parse_opt_card::<f64>(h, "A_0_2"),
+                a_1_2: parse_opt_card::<f64>(h, "A_1_2"),
+                a_2_2: parse_opt_card::<f64>(h, "A_2_2"),
+                a_3_2: parse_opt_card::<f64>(h, "A_3_2"),
+                a_4_2: parse_opt_card::<f64>(h, "A_4_2"),
+                a_0_3: parse_opt_card::<f64>(h, "A_0_3"),
+                a_1_3: parse_opt_card::<f64>(h, "A_1_3"),
+                a_2_3: parse_opt_card::<f64>(h, "A_2_3"),
+                a_3_3: parse_opt_card::<f64>(h, "A_3_3"),
+                a_0_4: parse_opt_card::<f64>(h, "A_0_4"),
+                a_1_4: parse_opt_card::<f64>(h, "A_1_4"),
+                a_2_4: parse_opt_card::<f64>(h, "A_2_4"),
+                a_0_5: parse_opt_card::<f64>(h, "A_0_5"),
+                a_1_5: parse_opt_card::<f64>(h, "A_1_5"),
+                a_0_6: parse_opt_card::<f64>(h, "A_0_6"),
+                ap_0_0: parse_opt_card::<f64>(h, "AP_0_0"),
+                ap_1_0: parse_opt_card::<f64>(h, "AP_1_0"),
+                ap_2_0: parse_opt_card::<f64>(h, "AP_2_0"),
+                ap_3_0: parse_opt_card::<f64>(h, "AP_3_0"),
+                ap_4_0: parse_opt_card::<f64>(h, "AP_4_0"),
+                ap_5_0: parse_opt_card::<f64>(h, "AP_5_0"),
+                ap_6_0: parse_opt_card::<f64>(h, "AP_6_0"),
+                ap_0_1: parse_opt_card::<f64>(h, "AP_0_1"),
+                ap_1_1: parse_opt_card::<f64>(h, "AP_1_1"),
+                ap_2_1: parse_opt_card::<f64>(h, "AP_2_1"),
+                ap_3_1: parse_opt_card::<f64>(h, "AP_3_1"),
+                ap_4_1: parse_opt_card::<f64>(h, "AP_4_1"),
+                ap_5_1: parse_opt_card::<f64>(h, "AP_5_1"),
+                ap_0_2: parse_opt_card::<f64>(h, "AP_0_2"),
+                ap_1_2: parse_opt_card::<f64>(h, "AP_1_2"),
+                ap_2_2: parse_opt_card::<f64>(h, "AP_2_2"),
+                ap_3_2: parse_opt_card::<f64>(h, "AP_3_2"),
+                ap_4_2: parse_opt_card::<f64>(h, "AP_4_2"),
+                ap_0_3: parse_opt_card::<f64>(h, "AP_0_3"),
+                ap_1_3: parse_opt_card::<f64>(h, "AP_1_3"),
+                ap_2_3: parse_opt_card::<f64>(h, "AP_2_3"),
+                ap_3_3: parse_opt_card::<f64>(h, "AP_3_3"),
+                ap_0_4: parse_opt_card::<f64>(h, "AP_0_4"),
+                ap_1_4: parse_opt_card::<f64>(h, "AP_1_4"),
+                ap_2_4: parse_opt_card::<f64>(h, "AP_2_4"),
+                ap_0_5: parse_opt_card::<f64>(h, "AP_0_5"),
+                ap_1_5: parse_opt_card::<f64>(h, "AP_1_5"),
+                ap_0_6: parse_opt_card::<f64>(h, "AP_0_6"),
+                b_0_0: parse_opt_card::<f64>(h, "B_0_0"),
+                b_1_0: parse_opt_card::<f64>(h, "B_1_0"),
+                b_2_0: parse_opt_card::<f64>(h, "B_2_0"),
+                b_3_0: parse_opt_card::<f64>(h, "B_3_0"),
+                b_4_0: parse_opt_card::<f64>(h, "B_4_0"),
+                b_5_0: parse_opt_card::<f64>(h, "B_5_0"),
+                b_6_0: parse_opt_card::<f64>(h, "B_6_0"),
+                b_0_1: parse_opt_card::<f64>(h, "B_0_1"),
+                b_1_1: parse_opt_card::<f64>(h, "B_1_1"),
+                b_2_1: parse_opt_card::<f64>(h, "B_2_1"),
+                b_3_1: parse_opt_card::<f64>(h, "B_3_1"),
+                b_4_1: parse_opt_card::<f64>(h, "B_4_1"),
+                b_5_1: parse_opt_card::<f64>(h, "B_5_1"),
+                b_0_2: parse_opt_card::<f64>(h, "B_0_2"),
+                b_1_2: parse_opt_card::<f64>(h, "B_1_2"),
+                b_2_2: parse_opt_card::<f64>(h, "B_2_2"),
+                b_3_2: parse_opt_card::<f64>(h, "B_3_2"),
+                b_4_2: parse_opt_card::<f64>(h, "B_4_2"),
+                b_0_3: parse_opt_card::<f64>(h, "B_0_3"),
+                b_1_3: parse_opt_card::<f64>(h, "B_1_3"),
+                b_2_3: parse_opt_card::<f64>(h, "B_2_3"),
+                b_3_3: parse_opt_card::<f64>(h, "B_3_3"),
+                b_0_4: parse_opt_card::<f64>(h, "B_0_4"),
+                b_1_4: parse_opt_card::<f64>(h, "B_1_4"),
+                b_2_4: parse_opt_card::<f64>(h, "B_2_4"),
+                b_0_5: parse_opt_card::<f64>(h, "B_0_5"),
+                b_1_5: parse_opt_card::<f64>(h, "B_1_5"),
+                b_0_6: parse_opt_card::<f64>(h, "B_0_6"),
+                bp_0_0: parse_opt_card::<f64>(h, "BP_0_0"),
+                bp_1_0: parse_opt_card::<f64>(h, "BP_1_0"),
+                bp_2_0: parse_opt_card::<f64>(h, "BP_2_0"),
+                bp_3_0: parse_opt_card::<f64>(h, "BP_3_0"),
+                bp_4_0: parse_opt_card::<f64>(h, "BP_4_0"),
+                bp_5_0: parse_opt_card::<f64>(h, "BP_5_0"),
+                bp_6_0: parse_opt_card::<f64>(h, "BP_6_0"),
+                bp_0_1: parse_opt_card::<f64>(h, "BP_0_1"),
+                bp_1_1: parse_opt_card::<f64>(h, "BP_1_1"),
+                bp_2_1: parse_opt_card::<f64>(h, "BP_2_1"),
+                bp_3_1: parse_opt_card::<f64>(h, "BP_3_1"),
+                bp_4_1: parse_opt_card::<f64>(h, "BP_4_1"),
+                bp_5_1: parse_opt_card::<f64>(h, "BP_5_1"),
+                bp_0_2: parse_opt_card::<f64>(h, "BP_0_2"),
+                bp_1_2: parse_opt_card::<f64>(h, "BP_1_2"),
+                bp_2_2: parse_opt_card::<f64>(h, "BP_2_2"),
+                bp_3_2: parse_opt_card::<f64>(h, "BP_3_2"),
+                bp_4_2: parse_opt_card::<f64>(h, "BP_4_2"),
+                bp_0_3: parse_opt_card::<f64>(h, "BP_0_3"),
+                bp_1_3: parse_opt_card::<f64>(h, "BP_1_3"),
+                bp_2_3: parse_opt_card::<f64>(h, "BP_2_3"),
+                bp_3_3: parse_opt_card::<f64>(h, "BP_3_3"),
+                bp_0_4: parse_opt_card::<f64>(h, "BP_0_4"),
+                bp_1_4: parse_opt_card::<f64>(h, "BP_1_4"),
+                bp_2_4: parse_opt_card::<f64>(h, "BP_2_4"),
+                bp_0_5: parse_opt_card::<f64>(h, "BP_0_5"),
+                bp_1_5: parse_opt_card::<f64>(h, "BP_1_5"),
+                bp_0_6: parse_opt_card::<f64>(h, "BP_0_6"),
             };
 
             WCS::new(&params)
@@ -1023,8 +1001,8 @@ mod tests {
                 let header = hdu.get_header();
 
                 // Parse data
-                let data = match fits.get_data(&hdu) {
-                    ImageData::F32(it) => it.collect::<Vec<_>>(),
+                let data = match fits.get_data(&hdu).pixels() {
+                    Pixels::F32(it) => it.collect::<Vec<_>>(),
                     _ => unreachable!(),
                 };
 
@@ -1066,18 +1044,13 @@ mod tests {
         header: &Header<Image>,
         data: &[f32],
     ) {
-        let scale = header
-            .get_parsed::<f64>("BSCALE")
-            .unwrap_or(Ok(1.0))
-            .unwrap() as f32;
-        let offset = header
-            .get_parsed::<f64>("BZERO")
-            .unwrap_or(Ok(0.0))
-            .unwrap() as f32;
+        let scale = header.get_parsed::<f32>("BSCALE").unwrap_or(1.0);
+        let offset = header.get_parsed::<f32>("BZERO").unwrap_or(0.0);
 
         let xtension = header.get_xtension();
-        let width = *xtension.get_naxisn(1).unwrap();
-        let height = *xtension.get_naxisn(2).unwrap();
+        let naxis = xtension.get_naxis();
+        let width = naxis[0];
+        let height = naxis[1];
 
         //let proj = mapproj::zenithal::sin::Sin::new();
         let bounds = proj.bounds();
@@ -1205,14 +1178,8 @@ mod tests {
                 match hdu {
                     HDU::XImage(hdu) | HDU::Primary(hdu) => {
                         let header = hdu.get_header();
-                        let crval1 = header
-                            .get_parsed::<f64>("CRVAL1")
-                            .unwrap_or(Ok(0.0))
-                            .unwrap();
-                        let crval2 = header
-                            .get_parsed::<f64>("CRVAL2")
-                            .unwrap_or(Ok(0.0))
-                            .unwrap();
+                        let crval1 = header.get_parsed::<f64>("CRVAL1").unwrap_or(0.0);
+                        let crval2 = header.get_parsed::<f64>("CRVAL2").unwrap_or(0.0);
                         let crpix1 =
                             if let Some(Value::Integer { value, .. }) = header.get("CRPIX1") {
                                 *value as f64
@@ -1244,9 +1211,7 @@ mod tests {
                         assert_delta!(proj_px.y(), crpix2, 1e-6);
 
                         // crpix to crval
-                        let lonlat = wcs
-                            .unproj_lonlat(&ImgXY::new(dbg!(crpix1), dbg!(crpix2)))
-                            .unwrap();
+                        let lonlat = wcs.unproj_lonlat(&ImgXY::new(crpix1, crpix2)).unwrap();
                         assert_delta!(lonlat.lon(), crval1.to_radians(), 1e-6);
                         assert_delta!(lonlat.lat(), crval2.to_radians(), 1e-6);
                     }
