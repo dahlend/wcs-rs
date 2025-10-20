@@ -82,42 +82,53 @@ pub struct WCS {
 ///   Results are given as a (lon, lat) tuple expressed in degrees
 impl WCS {
     pub fn new(params: &WCSParams) -> Result<Self, Error> {
+        // Check for ZNAXISi first (case of tiled compressed image stored in bin tables)
         let naxisi = match params.naxis {
             2 => {
                 let naxis1 = params
-                    .naxis1
+                    .znaxis1
+                    .or(params.naxis1)
                     .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS1"))?;
+
                 let naxis2 = params
-                    .naxis2
+                    .znaxis2
+                    .or(params.naxis2)
                     .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS2"))?;
 
                 Ok(vec![naxis1, naxis2].into_boxed_slice())
             }
             3 => {
                 let naxis1 = params
-                    .naxis1
+                    .znaxis1
+                    .or(params.naxis1)
                     .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS1"))?;
                 let naxis2 = params
-                    .naxis2
+                    .znaxis2
+                    .or(params.naxis2)
                     .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS2"))?;
                 let naxis3 = params
-                    .naxis3
+                    .znaxis3
+                    .or(params.naxis3)
                     .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS3"))?;
 
                 Ok(vec![naxis1, naxis2, naxis3].into_boxed_slice())
             }
             4 => {
                 let naxis1 = params
-                    .naxis1
+                    .znaxis1
+                    .or(params.naxis1)
                     .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS1"))?;
                 let naxis2 = params
-                    .naxis2
+                    .znaxis2
+                    .or(params.naxis2)
                     .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS2"))?;
                 let naxis3 = params
-                    .naxis3
+                    .znaxis3
+                    .or(params.naxis3)
                     .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS3"))?;
                 let naxis4 = params
-                    .naxis4
+                    .znaxis4
+                    .or(params.naxis4)
                     .ok_or(Error::MandatoryWCSKeywordsMissing("NAXIS4"))?;
 
                 Ok(vec![naxis1, naxis2, naxis3, naxis4].into_boxed_slice())
@@ -797,6 +808,11 @@ mod tests {
 
                 naxis1: parse_opt_card::<i64>(h, "NAXIS1"),
                 naxis2: parse_opt_card::<i64>(h, "NAXIS2"),
+
+                znaxis1: parse_opt_card::<i64>(h, "ZNAXIS1"),
+                znaxis2: parse_opt_card::<i64>(h, "ZNAXIS2"),
+                znaxis3: parse_opt_card::<i64>(h, "ZNAXIS3"),
+                znaxis4: parse_opt_card::<i64>(h, "ZNAXIS4"),
 
                 ctype2: parse_opt_card::<String>(h, "CTYPE2"),
                 ctype3: parse_opt_card::<String>(h, "CTYPE3"),
