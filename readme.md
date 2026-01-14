@@ -7,8 +7,8 @@
 This crate must be used conjointly with [fitsrs](https://github.com/cds-astro/fitsrs)
 It takes a FITS header and parse it to define a WCS.
 A WCS object allow two operations:
-* The projection of a (lon, lat) tuple given in degrees into the image space XY (in pixels)
-* The unprojection of a vertex in the image space into a tuple (lon, lat) on the sphere
+* The projection of a (lon, lat) tuple (expressed in radians, in ICRS frame) into the image space XY (in pixels)
+* The unprojection of a vertex in the image space into a tuple (lon, lat) on the sphere (expressed in radians, in ICRS frame)
 This crate heavily relies on the work done by F.-X. Pineau (@fxpineau) for the [mapproj](https://github.com/cds-astro/cds-mapproj-rust)
 crate
 

@@ -19,7 +19,7 @@ exclude = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mapproj = "0.4.0"
+mapproj = { path = "./cds-mapproj-rust" }
 enum_dispatch = "0.3.8"
 quick-error = "2.0.1"
 paste = "1.0.15"

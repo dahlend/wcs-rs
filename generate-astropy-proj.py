@@ -26,10 +26,11 @@ for filename in input_files:
     Z = np.random.random(100) * 0
 
     try:
-        coord = w.wcs_pix2world(np.vstack((X, Y)).T, 1)
+        # Use all_pix2world to include SIP distortion (full transformation)
+        coord = w.all_pix2world(np.vstack((X, Y)).T, 1)
         ra, dec = ((coord[:, 0] * u.deg).to_value(u.rad), (coord[:, 1] * u.deg).to_value(u.rad))
     except:
-        coord = w.wcs_pix2world(np.vstack((X, Y, Z)).T, 1)
+        coord = w.all_pix2world(np.vstack((X, Y, Z)).T, 1)
         ra, dec = ((coord[:, 0] * u.deg).to_value(u.rad), (coord[:, 1] * u.deg).to_value(u.rad))
 
     tab = np.column_stack((ra, dec, X, Y))

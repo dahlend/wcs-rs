@@ -6,7 +6,7 @@ use mapproj::XYZ;
 use crate::error::Error;
 use crate::params::WCSParams;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum RadeSys {
     /// International Celestial Reference System
     ICRS,
@@ -37,7 +37,7 @@ impl RadeSys {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum CooSystem {
     /// ICRS/J2000
     EQUATORIAL,
@@ -90,9 +90,23 @@ impl CooSystem {
 
                 xyz_to_lonlat(&rotated_xyz)
             }
+            CooSystem::CUSTOM { radesys, equinox } => {
+                // For ICRS and modern epochs (J2000), treat as EQUATORIAL
+                // Full transformation between epochs would require more complex calculations
+                match radesys {
+                    RadeSys::ICRS => lonlat, // ICRS is effectively the same as EQUATORIAL for most purposes
+                    _ => {
+                        // For other systems, we don't yet support epoch transformations
+                        todo!(
+                            "Epoch transformations for {:?} equinox {} are not supported yet.",
+                            radesys,
+                            equinox
+                        );
+                    }
+                }
+            }
             _ => {
-                // todo
-                lonlat
+                todo!("Other coordinate systems are not supported yet.");
             }
         }
     }
@@ -100,19 +114,26 @@ impl CooSystem {
     pub fn from_icrs_xyz(&self, xyz: XYZ) -> XYZ {
         match self {
             CooSystem::EQUATORIAL => xyz,
-            CooSystem::GALACTIC => {
-                // ICRS_2_GAL * xyz
-                let rotated_xyz = XYZ::new_renorming_if_necessary(
-                    ICRS_2_GAL[0] * xyz.x() + ICRS_2_GAL[1] * xyz.y() + ICRS_2_GAL[2] * xyz.z(),
-                    ICRS_2_GAL[3] * xyz.x() + ICRS_2_GAL[4] * xyz.y() + ICRS_2_GAL[5] * xyz.z(),
-                    ICRS_2_GAL[6] * xyz.x() + ICRS_2_GAL[7] * xyz.y() + ICRS_2_GAL[8] * xyz.z(),
-                );
-
-                rotated_xyz
+            CooSystem::GALACTIC => XYZ::new_renorming_if_necessary(
+                ICRS_2_GAL[0] * xyz.x() + ICRS_2_GAL[1] * xyz.y() + ICRS_2_GAL[2] * xyz.z(),
+                ICRS_2_GAL[3] * xyz.x() + ICRS_2_GAL[4] * xyz.y() + ICRS_2_GAL[5] * xyz.z(),
+                ICRS_2_GAL[6] * xyz.x() + ICRS_2_GAL[7] * xyz.y() + ICRS_2_GAL[8] * xyz.z(),
+            ),
+            CooSystem::CUSTOM { radesys, equinox } => {
+                // For ICRS and modern epochs (J2000), treat as EQUATORIAL
+                match radesys {
+                    RadeSys::ICRS => xyz,
+                    _ => {
+                        todo!(
+                            "Epoch transformations for {:?} equinox {} are not supported yet.",
+                            radesys,
+                            equinox
+                        );
+                    }
+                }
             }
             _ => {
-                // todo
-                xyz
+                todo!("Other coordinate systems are not supported yet.");
             }
         }
     }
@@ -133,9 +154,21 @@ impl CooSystem {
 
                 xyz_to_lonlat(&rotated_xyz)
             }
+            CooSystem::CUSTOM { radesys, equinox } => {
+                // For ICRS and modern epochs (J2000), treat as EQUATORIAL
+                match radesys {
+                    RadeSys::ICRS => lonlat,
+                    _ => {
+                        todo!(
+                            "Epoch transformations for {:?} equinox {} are not supported yet.",
+                            radesys,
+                            equinox
+                        );
+                    }
+                }
+            }
             _ => {
-                // todo
-                lonlat
+                todo!("Other coordinate systems are not supported yet.");
             }
         }
     }
@@ -151,9 +184,21 @@ impl CooSystem {
                     GAL_2_ICRS[6] * xyz.x() + GAL_2_ICRS[7] * xyz.y() + GAL_2_ICRS[8] * xyz.z(),
                 )
             }
+            CooSystem::CUSTOM { radesys, equinox } => {
+                // For ICRS and modern epochs (J2000), treat as EQUATORIAL
+                match radesys {
+                    RadeSys::ICRS => xyz,
+                    _ => {
+                        todo!(
+                            "Epoch transformations for {:?} equinox {} are not supported yet.",
+                            radesys,
+                            equinox
+                        );
+                    }
+                }
+            }
             _ => {
-                // todo
-                xyz
+                todo!("Other coordinate systems are not supported yet.");
             }
         }
     }
@@ -162,7 +207,7 @@ impl CooSystem {
 const GAL_2_ICRS: &[f64; 9] = &[
     -0.0548755604024359,
     0.4941094279435681,
-    -0.8676661489811610,
+    -0.867_666_148_981_161,
     -0.8734370902479237,
     -0.4448296299195045,
     -0.1980763734646737,
@@ -178,7 +223,7 @@ const ICRS_2_GAL: &[f64; 9] = &[
     0.4941094279435681,
     -0.4448296299195045,
     0.7469822444763707,
-    -0.8676661489811610,
+    -0.867666148981161,
     -0.1980763734646737,
     0.4559837762325372,
 ];
